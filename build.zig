@@ -1,4 +1,5 @@
 const std = @import("std");
+const Build = std.Build;
 
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
@@ -35,6 +36,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    const mecha = b.dependency("mecha", .{});
+
+    for ([_]*Build.Step.Compile{exe}) |step| {
+        step.root_module.addImport("mecha", mecha.module("mecha"));
+    }
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
