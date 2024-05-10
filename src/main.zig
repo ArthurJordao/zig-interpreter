@@ -1,24 +1,60 @@
 const std = @import("std");
+const mecha = @import("mecha");
 
-pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+const Rgb = struct {
+    r: u8,
+    g: u8,
+    b: u8,
+};
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
-
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
-
-    try bw.flush(); // don't forget to flush!
+fn toByte(v: u4) u8 {
+    return @as(u8, v) * 0x10 + v;
 }
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+const hex1 = mecha.int(u4, .{
+    .parse_sign = false,
+    .base = 16,
+    .max_digits = 1,
+}).map(toByte);
+const hex2 = mecha.int(u8, .{
+    .parse_sign = false,
+    .base = 16,
+    .max_digits = 2,
+});
+const rgb1 = mecha.manyN(hex1, 3, .{}).map(mecha.toStruct(Rgb));
+const rgb2 = mecha.manyN(hex2, 3, .{}).map(mecha.toStruct(Rgb));
+const rgb = mecha.combine(.{
+    mecha.ascii.char('#').discard(),
+    mecha.oneOf(.{ rgb2, rgb1 }),
+});
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    const color = (try rgb.parse(allocator, "#234")).value;
+    std.debug.print("{any}\n", .{color});
+}
+
+test "rgb" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    const a = (try rgb.parse(allocator, "#aabbcc")).value;
+    try testing.expectEqual(@as(u8, 0xaa), a.r);
+    try testing.expectEqual(@as(u8, 0xbb), a.g);
+    try testing.expectEqual(@as(u8, 0xcc), a.b);
+
+    const b = (try rgb.parse(allocator, "#abc")).value;
+    try testing.expectEqual(@as(u8, 0xaa), b.r);
+    try testing.expectEqual(@as(u8, 0xbb), b.g);
+    try testing.expectEqual(@as(u8, 0xcc), b.b);
+
+    const c = (try rgb.parse(allocator, "#000000")).value;
+    try testing.expectEqual(@as(u8, 0), c.r);
+    try testing.expectEqual(@as(u8, 0), c.g);
+    try testing.expectEqual(@as(u8, 0), c.b);
+
+    const d = (try rgb.parse(allocator, "#000")).value;
+    try testing.expectEqual(@as(u8, 0), d.r);
+    try testing.expectEqual(@as(u8, 0), d.g);
+    try testing.expectEqual(@as(u8, 0), d.b);
 }
