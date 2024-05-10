@@ -39,10 +39,6 @@ pub fn build(b: *std.Build) void {
 
     const mecha = b.dependency("mecha", .{});
 
-    for ([_]*Build.Step.Compile{exe}) |step| {
-        step.root_module.addImport("mecha", mecha.module("mecha"));
-    }
-
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
@@ -95,4 +91,8 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    for ([_]*Build.Step.Compile{ exe, exe_unit_tests }) |step| {
+        step.root_module.addImport("mecha", mecha.module("mecha"));
+    }
 }
