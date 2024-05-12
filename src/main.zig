@@ -43,7 +43,7 @@ const lisp = mecha.combine(.{
     ws,
     rparens,
     ws,
-});
+}).map(mecha.toStruct(Expr));
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -59,4 +59,9 @@ pub fn main() !void {
     }
 }
 
-test "lisp" {}
+test "lisp" {
+    try std.testing.expectEqual(
+        Expr{ .operand = '+', .left = 1, .right = 2 },
+        (try lisp.parse(std.testing.allocator, "(+ 1 2)")).value,
+    );
+}
