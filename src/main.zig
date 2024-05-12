@@ -54,7 +54,41 @@ pub fn main() !void {
 
     while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
         const ast = (try lisp.parse(allocator, line)).value;
-        try writer.print("{any}\n", .{ast});
+        try writer.print("{any}\n", .{eval(&ast)});
+    }
+}
+
+pub fn eval(expr: *const Expr) u32 {
+    switch (expr.func) {
+        '+' => {
+            var result: u32 = 0;
+            for (expr.args) |arg| {
+                result += arg;
+            }
+            return result;
+        },
+        '-' => {
+            var result: u32 = expr.args[0];
+            for (expr.args) |arg| {
+                result -= arg;
+            }
+            return result;
+        },
+        '*' => {
+            var result: u32 = 1;
+            for (expr.args) |arg| {
+                result *= arg;
+            }
+            return result;
+        },
+        '/' => {
+            var result: u32 = expr.args[0];
+            for (expr.args) |arg| {
+                result /= arg;
+            }
+            return result;
+        },
+        else => return 0,
     }
 }
 
