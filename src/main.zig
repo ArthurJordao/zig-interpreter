@@ -2,14 +2,16 @@ const std = @import("std");
 const mecha = @import("mecha");
 
 const Expr = struct {
-    operand: u8,
-    left: u32,
-    right: u32,
+    func: u8,
+    args: []u32,
 };
 
-const value = mecha.int(u32, .{
-    .parse_sign = false,
-    .base = 10,
+const value = mecha.combine(.{
+    mecha.int(u32, .{
+        .parse_sign = false,
+        .base = 10,
+    }),
+    ws,
 });
 
 const ws = mecha.oneOf(.{
@@ -20,11 +22,14 @@ const ws = mecha.oneOf(.{
     mecha.utf8.char(','),
 }).many(.{ .collect = false }).discard();
 
-const operator = mecha.oneOf(.{
-    mecha.ascii.char('+'),
-    mecha.ascii.char('-'),
-    mecha.ascii.char('/'),
-    mecha.ascii.char('*'),
+const operator = mecha.combine(.{
+    mecha.oneOf(.{
+        mecha.ascii.char('+'),
+        mecha.ascii.char('-'),
+        mecha.ascii.char('/'),
+        mecha.ascii.char('*'),
+    }),
+    ws,
 });
 
 const lparens = mecha.combine(.{ mecha.ascii.char('(').discard(), ws });
@@ -34,15 +39,9 @@ const rparens = mecha.combine(.{ mecha.ascii.char(')').discard(), ws });
 const lisp = mecha.combine(.{
     ws,
     lparens,
-    ws,
     operator,
-    ws,
-    value,
-    ws,
-    value,
-    ws,
+    value.many(.{ .collect = true }),
     rparens,
-    ws,
 }).map(mecha.toStruct(Expr));
 
 pub fn main() !void {
@@ -60,8 +59,17 @@ pub fn main() !void {
 }
 
 test "lisp" {
+    const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2)")).value;
     try std.testing.expectEqual(
-        Expr{ .operand = '+', .left = 1, .right = 2 },
-        (try lisp.parse(std.testing.allocator, "(+ 1 2)")).value,
+        '+',
+        ast.func,
     );
+
+    const expectedArgs = [_]u32{ 1, 2 };
+
+    try std.testing.expectEqualDeep(
+        &expectedArgs,
+        ast.args,
+    );
+    std.testing.allocator.free(ast.args);
 }
