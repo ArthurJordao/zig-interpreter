@@ -48,8 +48,15 @@ const lisp = mecha.combine(.{
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    const ast = (try lisp.parse(allocator, "(+ 1 2)")).value;
-    std.debug.print("{any}\n", .{ast});
+    const reader = std.io.getStdIn().reader();
+    const writer = std.io.getStdOut().writer();
+    const input = try allocator.alloc(u8, 1024);
+    defer allocator.free(input);
+
+    while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
+        const ast = (try lisp.parse(allocator, line)).value;
+        try writer.print("{any}\n", .{ast});
+    }
 }
 
 test "lisp" {}
