@@ -7,13 +7,13 @@ const ValType = enum {
 };
 
 const Val = union(ValType) {
-    num: *i32,
-    expr: *Expr,
+    num: i32,
+    expr: Expr,
 };
 
 const Expr = struct {
     func: u8,
-    args: []*Val,
+    args: []Val,
 };
 
 const value = mecha.combine(.{
@@ -21,29 +21,18 @@ const value = mecha.combine(.{
         mecha.int(i32, .{
             .parse_sign = false,
             .base = 10,
-        }).convert(numToValue),
-        mecha.ref(lispRef).convert(exprToValue),
+        }).map(numToValue),
+        mecha.ref(lispRef).map(exprToValue),
     }),
     ws,
 });
 
-fn numToValue(allocator: std.mem.Allocator, num: i32) !*Val {
-    const allocatedNum = try allocator.create(i32);
-    allocatedNum.* = num;
-    const val = try allocator.create(Val);
-    val.* = .{ .num = allocatedNum };
-    return val;
+fn numToValue(num: i32) Val {
+    return Val{ .num = num };
 }
 
-fn exprToValue(allocator: std.mem.Allocator, expr: Expr) !*Val {
-    const allocatedExpr = try allocator.create(Expr);
-    allocatedExpr.* = .{
-        .func = expr.func,
-        .args = expr.args,
-    };
-    const val = try allocator.create(Val);
-    val.* = .{ .expr = allocatedExpr };
-    return val;
+fn exprToValue(expr: Expr) Val {
+    return Val{ .expr = expr };
 }
 
 const ws = mecha.oneOf(.{
@@ -97,14 +86,12 @@ pub fn main() !void {
 
 fn freeExpr(allocator: *const std.mem.Allocator, expr: *const Expr) void {
     for (expr.args) |arg| {
-        switch (arg.*) {
-            .num => allocator.destroy(arg.num),
+        switch (arg) {
+            .num => {},
             .expr => {
-                freeExpr(allocator, arg.expr);
-                allocator.destroy(arg.expr);
+                freeExpr(allocator, &arg.expr);
             },
         }
-        allocator.destroy(arg);
     }
     allocator.free(expr.args);
 }
@@ -113,12 +100,12 @@ fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !i32 {
     const evaluatedArgs = try allocator.alloc(i32, expr.args.len);
     defer allocator.free(evaluatedArgs);
     for (0.., expr.args) |i, arg| {
-        switch (arg.*) {
+        switch (arg) {
             .num => |v| {
-                evaluatedArgs[i] = v.*;
+                evaluatedArgs[i] = v;
             },
             .expr => |v| {
-                evaluatedArgs[i] = try eval(v, allocator);
+                evaluatedArgs[i] = try eval(&v, allocator);
             },
         }
     }
