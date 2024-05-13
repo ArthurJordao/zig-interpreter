@@ -54,11 +54,16 @@ pub fn main() !void {
 
     while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
         const ast = (try lisp.parse(allocator, line)).value;
+        defer freeExpr(&allocator, &ast);
         try writer.print("{any}\n", .{eval(&ast)});
     }
 }
 
-pub fn eval(expr: *const Expr) u32 {
+fn freeExpr(allocator: *const std.mem.Allocator, expr: *const Expr) void {
+    allocator.free(expr.args);
+}
+
+fn eval(expr: *const Expr) u32 {
     switch (expr.func) {
         '+' => {
             var result: u32 = 0;
@@ -94,6 +99,7 @@ pub fn eval(expr: *const Expr) u32 {
 
 test "lisp" {
     const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2)")).value;
+    defer freeExpr(&std.testing.allocator, &ast);
     try std.testing.expectEqual(
         '+',
         ast.func,
@@ -105,5 +111,4 @@ test "lisp" {
         &expectedArgs,
         ast.args,
     );
-    std.testing.allocator.free(ast.args);
 }
