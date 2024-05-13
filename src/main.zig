@@ -96,6 +96,16 @@ pub fn main() !void {
 }
 
 fn freeExpr(allocator: *const std.mem.Allocator, expr: *const Expr) void {
+    for (expr.args) |arg| {
+        switch (arg.*) {
+            .num => allocator.destroy(arg.num),
+            .expr => {
+                freeExpr(allocator, arg.expr);
+                allocator.destroy(arg.expr);
+            },
+        }
+        allocator.destroy(arg);
+    }
     allocator.free(expr.args);
 }
 
@@ -145,18 +155,24 @@ fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !i32 {
     }
 }
 
-test "lisp" {
+test "lisp with simple expr" {
     const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2)")).value;
+    const evaluated = try eval(&ast, &std.testing.allocator);
     defer freeExpr(&std.testing.allocator, &ast);
-    try std.testing.expectEqual(
-        '+',
-        ast.func,
-    );
-
-    const expectedArgs = [_]i32{ 1, 2 };
 
     try std.testing.expectEqualDeep(
-        &expectedArgs,
-        ast.args,
+        3,
+        evaluated,
+    );
+}
+
+test "lisp with recursive expr" {
+    const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2 (+ 1 2))")).value;
+    const evaluated = try eval(&ast, &std.testing.allocator);
+    defer freeExpr(&std.testing.allocator, &ast);
+
+    try std.testing.expectEqualDeep(
+        6,
+        evaluated,
     );
 }
