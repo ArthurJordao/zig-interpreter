@@ -4,11 +4,19 @@ const mecha = @import("mecha");
 const ValType = enum {
     num,
     expr,
+    runtimeError,
+};
+
+const Error = enum {
+    divisionByZero,
+    arityMismatch,
+    invalidOperator,
 };
 
 const Val = union(ValType) {
     num: i32,
     expr: Expr,
+    runtimeError: Error,
 };
 
 const Expr = struct {
@@ -91,12 +99,13 @@ fn freeExpr(allocator: *const std.mem.Allocator, expr: *const Expr) void {
             .expr => {
                 freeExpr(allocator, &arg.expr);
             },
+            .runtimeError => unreachable,
         }
     }
     allocator.free(expr.args);
 }
 
-fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !i32 {
+fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !Val {
     const evaluatedArgs = try allocator.alloc(i32, expr.args.len);
     defer allocator.free(evaluatedArgs);
     for (0.., expr.args) |i, arg| {
@@ -105,7 +114,20 @@ fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !i32 {
                 evaluatedArgs[i] = v;
             },
             .expr => |v| {
-                evaluatedArgs[i] = try eval(&v, allocator);
+                const evaluated = try eval(&v, allocator);
+                switch (evaluated) {
+                    .num => |n| {
+                        evaluatedArgs[i] = n;
+                    },
+                    // NOTE: This is unreachable because we are evaluating the inner expression first.
+                    .expr => unreachable,
+                    .runtimeError => {
+                        return evaluated;
+                    },
+                }
+            },
+            .runtimeError => {
+                return arg;
             },
         }
     }
@@ -115,30 +137,36 @@ fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !i32 {
             for (evaluatedArgs) |arg| {
                 result += arg;
             }
-            return result;
+            return Val{ .num = result };
         },
         '-' => {
             var result: i32 = evaluatedArgs[0];
             for (evaluatedArgs[1..]) |arg| {
                 result -= arg;
             }
-            return result;
+            return Val{ .num = result };
         },
         '*' => {
             var result: i32 = 1;
             for (evaluatedArgs) |arg| {
                 result *= arg;
             }
-            return result;
+            return Val{ .num = result };
         },
         '/' => {
+            if (evaluatedArgs.len < 2) {
+                return Val{ .runtimeError = .arityMismatch };
+            }
+            if (evaluatedArgs[1] == 0) {
+                return Val{ .runtimeError = .divisionByZero };
+            }
             var result: i32 = evaluatedArgs[0];
             for (evaluatedArgs[1..]) |arg| {
                 result = @divTrunc(result, arg);
             }
-            return result;
+            return Val{ .num = result };
         },
-        else => return 0,
+        else => return Val{ .runtimeError = .invalidOperator },
     }
 }
 
@@ -148,7 +176,7 @@ test "lisp with simple expr" {
     defer freeExpr(&std.testing.allocator, &ast);
 
     try std.testing.expectEqualDeep(
-        3,
+        Val{ .num = 3 },
         evaluated,
     );
 }
@@ -159,7 +187,7 @@ test "lisp with recursive expr" {
     defer freeExpr(&std.testing.allocator, &ast);
 
     try std.testing.expectEqualDeep(
-        6,
+        Val{ .num = 6 },
         evaluated,
     );
 }
