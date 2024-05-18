@@ -4,7 +4,6 @@ const mecha = @import("mecha");
 const ValType = enum {
     num,
     expr,
-    runtimeError,
 };
 
 const Error = enum {
@@ -16,12 +15,21 @@ const Error = enum {
 const Val = union(ValType) {
     num: i32,
     expr: Expr,
-    runtimeError: Error,
 };
 
 const Expr = struct {
     func: u8,
     args: []Val,
+};
+
+const EvaluationType = enum {
+    num,
+    runtimeError,
+};
+
+const EvaluationValue = union(EvaluationType) {
+    num: i32,
+    runtimeError: Error,
 };
 
 const value = mecha.combine(.{
@@ -99,13 +107,12 @@ fn freeExpr(allocator: *const std.mem.Allocator, expr: *const Expr) void {
             .expr => {
                 freeExpr(allocator, &arg.expr);
             },
-            .runtimeError => unreachable,
         }
     }
     allocator.free(expr.args);
 }
 
-fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !Val {
+fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !EvaluationValue {
     const evaluatedArgs = try allocator.alloc(i32, expr.args.len);
     defer allocator.free(evaluatedArgs);
     for (0.., expr.args) |i, arg| {
@@ -119,15 +126,10 @@ fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !Val {
                     .num => |n| {
                         evaluatedArgs[i] = n;
                     },
-                    // NOTE: This is unreachable because we are evaluating the inner expression first.
-                    .expr => unreachable,
                     .runtimeError => {
                         return evaluated;
                     },
                 }
-            },
-            .runtimeError => {
-                return arg;
             },
         }
     }
@@ -137,36 +139,36 @@ fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !Val {
             for (evaluatedArgs) |arg| {
                 result += arg;
             }
-            return Val{ .num = result };
+            return EvaluationValue{ .num = result };
         },
         '-' => {
             var result: i32 = evaluatedArgs[0];
             for (evaluatedArgs[1..]) |arg| {
                 result -= arg;
             }
-            return Val{ .num = result };
+            return EvaluationValue{ .num = result };
         },
         '*' => {
             var result: i32 = 1;
             for (evaluatedArgs) |arg| {
                 result *= arg;
             }
-            return Val{ .num = result };
+            return EvaluationValue{ .num = result };
         },
         '/' => {
             if (evaluatedArgs.len < 2) {
-                return Val{ .runtimeError = .arityMismatch };
+                return EvaluationValue{ .runtimeError = .arityMismatch };
             }
             if (evaluatedArgs[1] == 0) {
-                return Val{ .runtimeError = .divisionByZero };
+                return EvaluationValue{ .runtimeError = .divisionByZero };
             }
             var result: i32 = evaluatedArgs[0];
             for (evaluatedArgs[1..]) |arg| {
                 result = @divTrunc(result, arg);
             }
-            return Val{ .num = result };
+            return EvaluationValue{ .num = result };
         },
-        else => return Val{ .runtimeError = .invalidOperator },
+        else => return EvaluationValue{ .runtimeError = .invalidOperator },
     }
 }
 
