@@ -162,25 +162,25 @@ fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !EvaluationValue
             },
         }
     }
-    if (std.mem.eql(u8, expr.symbol, "+")) {
+    if (std.mem.eql(u8, expr.symbol, "+") or std.mem.eql(u8, expr.symbol, "sum")) {
         var result: i32 = 0;
         for (evaluatedArgs) |arg| {
             result += arg;
         }
         return EvaluationValue{ .num = result };
-    } else if (std.mem.eql(u8, expr.symbol, "-")) {
+    } else if (std.mem.eql(u8, expr.symbol, "-") or std.mem.eql(u8, expr.symbol, "sub")) {
         var result: i32 = evaluatedArgs[0];
         for (evaluatedArgs[1..]) |arg| {
             result -= arg;
         }
         return EvaluationValue{ .num = result };
-    } else if (std.mem.eql(u8, expr.symbol, "*")) {
+    } else if (std.mem.eql(u8, expr.symbol, "*") or std.mem.eql(u8, expr.symbol, "mul")) {
         var result: i32 = 1;
         for (evaluatedArgs) |arg| {
             result *= arg;
         }
         return EvaluationValue{ .num = result };
-    } else if (std.mem.eql(u8, expr.symbol, "/")) {
+    } else if (std.mem.eql(u8, expr.symbol, "/") or std.mem.eql(u8, expr.symbol, "div")) {
         if (evaluatedArgs.len < 2) {
             return EvaluationValue{ .runtimeError = .arityMismatch };
         }
