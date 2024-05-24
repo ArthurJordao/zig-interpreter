@@ -18,7 +18,7 @@ const Val = union(ValType) {
 };
 
 const Expr = struct {
-    func: u8,
+    symbol: []u8,
     args: []Val,
 };
 
@@ -59,15 +59,43 @@ const ws = mecha.oneOf(.{
     mecha.utf8.char(','),
 }).many(.{ .collect = false }).discard();
 
-const operator = mecha.combine(.{
+const allowedSymbolSpecialCharacters = mecha.combine(.{
     mecha.oneOf(.{
         mecha.ascii.char('+'),
         mecha.ascii.char('-'),
         mecha.ascii.char('/'),
         mecha.ascii.char('*'),
     }),
-    ws,
 });
+
+const uppercaseCharacter = mecha.ascii.range('A', 'Z');
+const lowercaseCharacter = mecha.ascii.range('a', 'z');
+const numberCharacter = mecha.ascii.range('0', '9');
+
+const symbol = mecha.combine(.{
+    mecha.oneOf(.{
+        uppercaseCharacter,
+        lowercaseCharacter,
+        allowedSymbolSpecialCharacters,
+    }),
+    mecha.oneOf(.{
+        uppercaseCharacter,
+        lowercaseCharacter,
+        allowedSymbolSpecialCharacters,
+        numberCharacter,
+    }).many(.{ .collect = true }),
+    ws,
+}).convert(parseSymbol);
+
+fn parseSymbol(allocator: std.mem.Allocator, parsedValue: std.meta.Tuple(&.{ u8, []u8 })) ![]u8 {
+    const s = try allocator.alloc(u8, parsedValue[1].len + 1);
+    s[0] = parsedValue[0];
+    for (1.., parsedValue[1]) |i, c| {
+        s[i] = c;
+    }
+    allocator.free(parsedValue[1]);
+    return s;
+}
 
 const lparens = mecha.combine(.{ mecha.ascii.char('(').discard(), ws });
 
@@ -76,7 +104,7 @@ const rparens = mecha.combine(.{ mecha.ascii.char(')').discard(), ws });
 const lisp = mecha.combine(.{
     ws,
     lparens,
-    operator,
+    symbol,
     value.many(.{ .collect = true }),
     rparens,
 }).map(mecha.toStruct(Expr));
@@ -110,6 +138,7 @@ fn freeExpr(allocator: *const std.mem.Allocator, expr: *const Expr) void {
         }
     }
     allocator.free(expr.args);
+    allocator.free(expr.symbol);
 }
 
 fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !EvaluationValue {
@@ -133,42 +162,38 @@ fn eval(expr: *const Expr, allocator: *const std.mem.Allocator) !EvaluationValue
             },
         }
     }
-    switch (expr.func) {
-        '+' => {
-            var result: i32 = 0;
-            for (evaluatedArgs) |arg| {
-                result += arg;
-            }
-            return EvaluationValue{ .num = result };
-        },
-        '-' => {
-            var result: i32 = evaluatedArgs[0];
-            for (evaluatedArgs[1..]) |arg| {
-                result -= arg;
-            }
-            return EvaluationValue{ .num = result };
-        },
-        '*' => {
-            var result: i32 = 1;
-            for (evaluatedArgs) |arg| {
-                result *= arg;
-            }
-            return EvaluationValue{ .num = result };
-        },
-        '/' => {
-            if (evaluatedArgs.len < 2) {
-                return EvaluationValue{ .runtimeError = .arityMismatch };
-            }
-            if (evaluatedArgs[1] == 0) {
-                return EvaluationValue{ .runtimeError = .divisionByZero };
-            }
-            var result: i32 = evaluatedArgs[0];
-            for (evaluatedArgs[1..]) |arg| {
-                result = @divTrunc(result, arg);
-            }
-            return EvaluationValue{ .num = result };
-        },
-        else => return EvaluationValue{ .runtimeError = .invalidOperator },
+    if (std.mem.eql(u8, expr.symbol, "+")) {
+        var result: i32 = 0;
+        for (evaluatedArgs) |arg| {
+            result += arg;
+        }
+        return EvaluationValue{ .num = result };
+    } else if (std.mem.eql(u8, expr.symbol, "-")) {
+        var result: i32 = evaluatedArgs[0];
+        for (evaluatedArgs[1..]) |arg| {
+            result -= arg;
+        }
+        return EvaluationValue{ .num = result };
+    } else if (std.mem.eql(u8, expr.symbol, "*")) {
+        var result: i32 = 1;
+        for (evaluatedArgs) |arg| {
+            result *= arg;
+        }
+        return EvaluationValue{ .num = result };
+    } else if (std.mem.eql(u8, expr.symbol, "/")) {
+        if (evaluatedArgs.len < 2) {
+            return EvaluationValue{ .runtimeError = .arityMismatch };
+        }
+        if (evaluatedArgs[1] == 0) {
+            return EvaluationValue{ .runtimeError = .divisionByZero };
+        }
+        var result: i32 = evaluatedArgs[0];
+        for (evaluatedArgs[1..]) |arg| {
+            result = @divTrunc(result, arg);
+        }
+        return EvaluationValue{ .num = result };
+    } else {
+        return EvaluationValue{ .runtimeError = .invalidOperator };
     }
 }
 
@@ -178,7 +203,7 @@ test "lisp with simple expr" {
     defer freeExpr(&std.testing.allocator, &ast);
 
     try std.testing.expectEqualDeep(
-        Val{ .num = 3 },
+        EvaluationValue{ .num = 3 },
         evaluated,
     );
 }
@@ -189,7 +214,7 @@ test "lisp with recursive expr" {
     defer freeExpr(&std.testing.allocator, &ast);
 
     try std.testing.expectEqualDeep(
-        Val{ .num = 6 },
+        EvaluationValue{ .num = 6 },
         evaluated,
     );
 }
