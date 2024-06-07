@@ -144,11 +144,15 @@ fn freeExpr(allocator: *const std.mem.Allocator, expr: Expr) void {
 }
 
 fn eval(expr: Expr) EvaluationValue {
+    if (expr.len == 0) {
+        return EvaluationValue{ .num = 0 }; //todo convert it to nil
+    }
     switch (expr[0]) {
         .symbol => |operator| {
             if (std.mem.eql(u8, operator, "+")) {
                 return evalAdd(expr[1..]);
             }
+            return EvaluationValue{ .runtimeError = Error.invalidOperator };
         },
         else => {
             return EvaluationValue{ .runtimeError = Error.invalidOperator };
@@ -184,25 +188,24 @@ fn evalAdd(expr: Expr) EvaluationValue {
     return EvaluationValue{ .num = sum };
 }
 
-//
-// test "lisp with simple expr" {
-//     const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2)")).value;
-//     const evaluated = try eval(&ast, &std.testing.allocator);
-//     defer freeExpr(&std.testing.allocator, &ast);
-//
-//     try std.testing.expectEqualDeep(
-//         EvaluationValue{ .num = 3 },
-//         evaluated,
-//     );
-// }
-//
-// test "lisp with recursive expr" {
-//     const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2 (+ 1 2))")).value;
-//     const evaluated = try eval(&ast, &std.testing.allocator);
-//     defer freeExpr(&std.testing.allocator, &ast);
-//
-//     try std.testing.expectEqualDeep(
-//         EvaluationValue{ .num = 6 },
-//         evaluated,
-//     );
-// }
+test "lisp with simple expr" {
+    const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2)")).value;
+    const evaluated = eval(ast);
+    defer freeExpr(&std.testing.allocator, ast);
+
+    try std.testing.expectEqualDeep(
+        EvaluationValue{ .num = 3 },
+        evaluated,
+    );
+}
+
+test "lisp with recursive expr" {
+    const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2 (+ 1 2))")).value;
+    const evaluated = eval(ast);
+    defer freeExpr(&std.testing.allocator, ast);
+
+    try std.testing.expectEqualDeep(
+        EvaluationValue{ .num = 6 },
+        evaluated,
+    );
+}
