@@ -123,12 +123,12 @@ pub fn main() !void {
 
     while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
         const ast = (try lisp.parse(allocator, line)).value;
-        defer freeExpr(&allocator, ast);
+        defer freeExpr(allocator, ast);
         try writer.print("{any}\n", .{eval(ast)});
     }
 }
 
-fn freeExpr(allocator: *const std.mem.Allocator, expr: Expr) void {
+fn freeExpr(allocator: std.mem.Allocator, expr: Expr) void {
     for (expr) |arg| {
         switch (arg) {
             .num => {},
@@ -143,14 +143,17 @@ fn freeExpr(allocator: *const std.mem.Allocator, expr: Expr) void {
     allocator.free(expr);
 }
 
-fn eval(expr: Expr) EvaluationValue {
+fn eval(expr: Expr, allocator: std.mem.Allocator) EvaluationValue {
     if (expr.len == 0) {
         return EvaluationValue{ .num = 0 }; //todo convert it to nil
     }
     switch (expr[0]) {
         .symbol => |operator| {
             if (std.mem.eql(u8, operator, "+")) {
-                return evalAdd(expr[1..]);
+                return evalAdd(expr[1..], allocator);
+            }
+            if (std.mem.eql(u8, operator, "let")) {
+                return evalLet(expr[1..], allocator);
             }
             return EvaluationValue{ .runtimeError = Error.invalidOperator };
         },
@@ -161,7 +164,7 @@ fn eval(expr: Expr) EvaluationValue {
     return EvaluationValue{ .runtimeError = Error.invalidOperator };
 }
 
-fn evalAdd(expr: Expr) EvaluationValue {
+fn evalAdd(expr: Expr, allocator: std.mem.Allocator) EvaluationValue {
     var sum: i32 = 0;
     for (expr) |arg| {
         switch (arg) {
@@ -169,7 +172,7 @@ fn evalAdd(expr: Expr) EvaluationValue {
                 sum += num;
             },
             .expr => |e| {
-                switch (eval(e)) {
+                switch (eval(e, allocator)) {
                     .num => |num| {
                         sum += num;
                     },
@@ -186,6 +189,45 @@ fn evalAdd(expr: Expr) EvaluationValue {
         }
     }
     return EvaluationValue{ .num = sum };
+}
+
+fn evalLet(expr: Expr, allocator: std.mem.Allocator) Val {
+    if (expr.len <= 2) {
+        return Val{ .num = 0 };
+    }
+    const bindings = std.StringHashMap(Val).init(allocator);
+    switch (expr[0]) {
+        .expr => |e| {
+            if (e.len % 2 != 0) {
+                return Val{ .runtimeError = Error.arityMismatch };
+            }
+            for (0..e.len / 2) |i| {
+                const key = e[i * 2];
+                const val = e[i * 2 + 1];
+                const variableName = switch (key) {
+                    .symbol => |s| s,
+                    .num => {
+                        return Val{ .runtimeError = Error.invalidOperand };
+                    },
+                    .expr => {
+                        return Val{ .runtimeError = Error.invalidOperand };
+                    },
+                };
+                const evaluation = eval(val, allocator);
+                switch (evaluation) {
+                    .num => {
+                        bindings.put(variableName, evaluation);
+                    },
+                    .runtimeError => {
+                        return Val{ .runtimeError = evaluation.runtimeError };
+                    },
+                }
+            }
+        },
+        else => {
+            return Val{ .runtimeError = Error.invalidOperand };
+        },
+    }
 }
 
 test "lisp with simple expr" {
