@@ -33,6 +33,8 @@ const EvaluationValue = union(EvaluationType) {
     runtimeError: Error,
 };
 
+const Scope = std.StringHashMap(EvaluationValue);
+
 const value = mecha.combine(.{
     mecha.oneOf(.{
         mecha.int(i32, .{
@@ -122,10 +124,12 @@ pub fn main() !void {
     const input = try allocator.alloc(u8, 1024);
     defer allocator.free(input);
 
+    var globalScope = Scope.init(allocator);
+    defer globalScope.deinit();
     while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
         const ast = (try lisp.parse(allocator, line)).value;
         defer freeExpr(allocator, ast);
-        try writer.print("{any}\n", .{eval(ast, allocator)});
+        try writer.print("{any}\n", .{eval(ast, &globalScope, allocator)});
     }
 }
 
@@ -144,17 +148,17 @@ fn freeExpr(allocator: std.mem.Allocator, expr: Expr) void {
     allocator.free(expr);
 }
 
-fn eval(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+fn eval(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     if (expr.len == 0) {
         return EvaluationValue{ .num = 0 }; //todo convert it to nil
     }
     switch (expr[0]) {
         .symbol => |operator| {
             if (std.mem.eql(u8, operator, "+")) {
-                return (try evalAdd(expr[1..], allocator));
+                return (try evalAdd(expr[1..], scope, allocator));
             }
             if (std.mem.eql(u8, operator, "let")) {
-                return (try evalLet(expr[1..], allocator));
+                return (try evalLet(expr[1..], scope, allocator));
             }
             return EvaluationValue{ .runtimeError = Error.invalidOperator };
         },
@@ -165,7 +169,7 @@ fn eval(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!Evalua
     return EvaluationValue{ .runtimeError = Error.invalidOperator };
 }
 
-fn evalAdd(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+fn evalAdd(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     var sum: i32 = 0;
     for (expr) |arg| {
         switch (arg) {
@@ -173,7 +177,7 @@ fn evalAdd(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!Eva
                 sum += num;
             },
             .expr => |e| {
-                switch (try eval(e, allocator)) {
+                switch (try eval(e, scope, allocator)) {
                     .num => |num| {
                         sum += num;
                     },
@@ -192,12 +196,10 @@ fn evalAdd(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!Eva
     return EvaluationValue{ .num = sum };
 }
 
-fn evalLet(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+fn evalLet(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     if (expr.len < 2) {
         return EvaluationValue{ .num = 0 };
     }
-    var bindings = std.StringHashMap(EvaluationValue).init(allocator);
-    defer bindings.deinit();
     switch (expr[0]) {
         .expr => |e| {
             if (e.len % 2 != 0) {
@@ -216,13 +218,13 @@ fn evalLet(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!Eva
                     },
                 };
                 const evaluation = switch (val) {
-                    .expr => |ex| try eval(ex, allocator),
+                    .expr => |ex| try eval(ex, scope, allocator),
                     .num => |num| EvaluationValue{ .num = num },
-                    .symbol => |s| bindings.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
+                    .symbol => |s| scope.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
                 };
                 switch (evaluation) {
                     .num => {
-                        try bindings.put(variableName, evaluation);
+                        try scope.put(variableName, evaluation);
                     },
                     .runtimeError => {
                         return EvaluationValue{ .runtimeError = evaluation.runtimeError };
@@ -230,9 +232,9 @@ fn evalLet(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!Eva
                 }
             }
             return switch (expr[1]) {
-                .expr => |ex| eval(ex, allocator),
+                .expr => |ex| eval(ex, scope, allocator),
                 .num => |num| EvaluationValue{ .num = num },
-                .symbol => |s| bindings.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
+                .symbol => |s| scope.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
             };
         },
         else => {
