@@ -12,6 +12,7 @@ const Error = enum {
     arityMismatch,
     invalidOperator,
     invalidOperand,
+    undefinedVariable,
 };
 
 const Val = union(ValType) {
@@ -124,7 +125,7 @@ pub fn main() !void {
     while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
         const ast = (try lisp.parse(allocator, line)).value;
         defer freeExpr(allocator, ast);
-        try writer.print("{any}\n", .{eval(ast)});
+        try writer.print("{any}\n", .{eval(ast, allocator)});
     }
 }
 
@@ -143,17 +144,17 @@ fn freeExpr(allocator: std.mem.Allocator, expr: Expr) void {
     allocator.free(expr);
 }
 
-fn eval(expr: Expr, allocator: std.mem.Allocator) EvaluationValue {
+fn eval(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     if (expr.len == 0) {
         return EvaluationValue{ .num = 0 }; //todo convert it to nil
     }
     switch (expr[0]) {
         .symbol => |operator| {
             if (std.mem.eql(u8, operator, "+")) {
-                return evalAdd(expr[1..], allocator);
+                return (try evalAdd(expr[1..], allocator));
             }
             if (std.mem.eql(u8, operator, "let")) {
-                return evalLet(expr[1..], allocator);
+                return (try evalLet(expr[1..], allocator));
             }
             return EvaluationValue{ .runtimeError = Error.invalidOperator };
         },
@@ -164,7 +165,7 @@ fn eval(expr: Expr, allocator: std.mem.Allocator) EvaluationValue {
     return EvaluationValue{ .runtimeError = Error.invalidOperator };
 }
 
-fn evalAdd(expr: Expr, allocator: std.mem.Allocator) EvaluationValue {
+fn evalAdd(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     var sum: i32 = 0;
     for (expr) |arg| {
         switch (arg) {
@@ -172,7 +173,7 @@ fn evalAdd(expr: Expr, allocator: std.mem.Allocator) EvaluationValue {
                 sum += num;
             },
             .expr => |e| {
-                switch (eval(e, allocator)) {
+                switch (try eval(e, allocator)) {
                     .num => |num| {
                         sum += num;
                     },
@@ -191,15 +192,15 @@ fn evalAdd(expr: Expr, allocator: std.mem.Allocator) EvaluationValue {
     return EvaluationValue{ .num = sum };
 }
 
-fn evalLet(expr: Expr, allocator: std.mem.Allocator) Val {
-    if (expr.len <= 2) {
-        return Val{ .num = 0 };
+fn evalLet(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+    if (expr.len < 2) {
+        return EvaluationValue{ .num = 0 };
     }
-    const bindings = std.StringHashMap(Val).init(allocator);
+    var bindings = std.StringHashMap(EvaluationValue).init(allocator);
     switch (expr[0]) {
         .expr => |e| {
             if (e.len % 2 != 0) {
-                return Val{ .runtimeError = Error.arityMismatch };
+                return EvaluationValue{ .runtimeError = Error.arityMismatch };
             }
             for (0..e.len / 2) |i| {
                 const key = e[i * 2];
@@ -207,25 +208,34 @@ fn evalLet(expr: Expr, allocator: std.mem.Allocator) Val {
                 const variableName = switch (key) {
                     .symbol => |s| s,
                     .num => {
-                        return Val{ .runtimeError = Error.invalidOperand };
+                        return EvaluationValue{ .runtimeError = Error.invalidOperand };
                     },
                     .expr => {
-                        return Val{ .runtimeError = Error.invalidOperand };
+                        return EvaluationValue{ .runtimeError = Error.invalidOperand };
                     },
                 };
-                const evaluation = eval(val, allocator);
+                const evaluation = switch (val) {
+                    .expr => |ex| try eval(ex, allocator),
+                    .num => |num| EvaluationValue{ .num = num },
+                    .symbol => |s| bindings.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
+                };
                 switch (evaluation) {
                     .num => {
-                        bindings.put(variableName, evaluation);
+                        try bindings.put(variableName, evaluation);
                     },
                     .runtimeError => {
-                        return Val{ .runtimeError = evaluation.runtimeError };
+                        return EvaluationValue{ .runtimeError = evaluation.runtimeError };
                     },
                 }
             }
+            return switch (expr[1]) {
+                .expr => |ex| eval(ex, allocator),
+                .num => |num| EvaluationValue{ .num = num },
+                .symbol => |s| bindings.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
+            };
         },
         else => {
-            return Val{ .runtimeError = Error.invalidOperand };
+            return EvaluationValue{ .runtimeError = Error.invalidOperand };
         },
     }
 }
