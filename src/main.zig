@@ -197,6 +197,7 @@ fn evalLet(expr: Expr, allocator: std.mem.Allocator) std.mem.Allocator.Error!Eva
         return EvaluationValue{ .num = 0 };
     }
     var bindings = std.StringHashMap(EvaluationValue).init(allocator);
+    defer bindings.deinit();
     switch (expr[0]) {
         .expr => |e| {
             if (e.len % 2 != 0) {
