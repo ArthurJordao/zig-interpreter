@@ -186,10 +186,15 @@ fn evalAdd(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
                     },
                 }
             },
-            .symbol => |_| {
-                return EvaluationValue{
-                    .runtimeError = Error.invalidOperand,
-                };
+            .symbol => |sym| {
+                switch ((scope.get(sym)) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable }) {
+                    .num => |num| {
+                        sum += num;
+                    },
+                    .runtimeError => |rError| {
+                        return EvaluationValue{ .runtimeError = rError };
+                    },
+                }
             },
         }
     }
