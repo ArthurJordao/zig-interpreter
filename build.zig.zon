@@ -16,8 +16,8 @@
     // internet connectivity.
     .dependencies = .{
         .mecha = .{
-            .url = "https://github.com/Hejsil/mecha/archive/refs/tags/0.8.0.tar.gz",
-            .hash = "1220344ce5421927ed7f0a22154b469361f9064d1ed9aaa356340f3e864f5cf7e4b5",
+            .url = "https://github.com/Hejsil/mecha/archive/refs/heads/master.tar.gz",
+            .hash = "12206311fbaae8a0adc35e4835ddd9bcc1ff8fff756c9df40e19133f007fa05d3948",
         },
     },
     .paths = .{
