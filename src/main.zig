@@ -158,7 +158,9 @@ fn eval(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocat
                 return (try evalAdd(expr[1..], scope, allocator));
             }
             if (std.mem.eql(u8, operator, "let")) {
-                return (try evalLet(expr[1..], scope, allocator));
+                var letScope = try scope.clone();
+                defer letScope.deinit();
+                return (try evalLet(expr[1..], &letScope, allocator));
             }
             return EvaluationValue{ .runtimeError = Error.invalidOperator };
         },
@@ -269,3 +271,5 @@ test "lisp with recursive expr" {
         evaluated,
     );
 }
+
+// (let (x 1 y (let (z 3) (+ z 4))) (+ x y))
