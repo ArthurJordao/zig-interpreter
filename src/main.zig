@@ -278,4 +278,29 @@ test "lisp with recursive expr" {
     );
 }
 
-// (let (x 1 y (let (z 3) (+ z 4))) (+ x y))
+test "lisp with some lets" {
+    const allocator = std.testing.allocator;
+    const ast = (try lisp.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y))")).value;
+    var scope = Scope.init(allocator);
+    defer scope.deinit();
+    const evaluated = eval(ast, &scope, allocator);
+    defer freeExpr(std.testing.allocator, ast);
+
+    try std.testing.expectEqualDeep(
+        EvaluationValue{ .num = 8 },
+        evaluated,
+    );
+}
+
+test "lisp with some lets and undefined variable" {
+    const allocator = std.testing.allocator;
+    const ast = (try lisp.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y z))")).value;
+    var scope = Scope.init(allocator);
+    defer scope.deinit();
+    const evaluated = eval(ast, &scope, allocator);
+    defer freeExpr(std.testing.allocator, ast);
+    try std.testing.expectEqualDeep(
+        EvaluationValue{ .runtimeError = Error.undefinedVariable },
+        evaluated,
+    );
+}
