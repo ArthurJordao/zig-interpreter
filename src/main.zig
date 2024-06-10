@@ -251,9 +251,12 @@ fn evalLet(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
 }
 
 test "lisp with simple expr" {
-    const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2)")).value;
-    const evaluated = eval(ast);
-    defer freeExpr(&std.testing.allocator, ast);
+    const allocator = std.testing.allocator;
+    const ast = (try lisp.parse(allocator, "(+ 1 2)")).value;
+    var scope = Scope.init(allocator);
+    defer scope.deinit();
+    const evaluated = eval(ast, &scope, allocator);
+    defer freeExpr(std.testing.allocator, ast);
 
     try std.testing.expectEqualDeep(
         EvaluationValue{ .num = 3 },
@@ -262,9 +265,12 @@ test "lisp with simple expr" {
 }
 
 test "lisp with recursive expr" {
-    const ast = (try lisp.parse(std.testing.allocator, "(+ 1 2 (+ 1 2))")).value;
-    const evaluated = eval(ast);
-    defer freeExpr(&std.testing.allocator, ast);
+    const allocator = std.testing.allocator;
+    const ast = (try lisp.parse(allocator, "(+ 1 2 (+ 1 2))")).value;
+    var scope = Scope.init(allocator);
+    defer scope.deinit();
+    const evaluated = eval(ast, &scope, allocator);
+    defer freeExpr(std.testing.allocator, ast);
 
     try std.testing.expectEqualDeep(
         EvaluationValue{ .num = 6 },
