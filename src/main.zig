@@ -174,7 +174,7 @@ fn newChildScope(scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.
 
 fn eval(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     if (expr.len == 0) {
-        return EvaluationValue{ .num = 0 }; //todo convert it to nil
+        return EvaluationValue{ .nil = {} };
     }
     switch (expr[0]) {
         .symbol => |operator| {
@@ -214,7 +214,7 @@ fn eval(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocat
                         return EvaluationValue{ .runtimeError = Error.invalidOperand };
                     },
                 }
-                return EvaluationValue{ .num = 0 };
+                return EvaluationValue{ .nil = {} };
             }
             return EvaluationValue{ .runtimeError = Error.invalidOperator };
         },
@@ -269,7 +269,7 @@ fn evalAdd(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
 
 fn evalLet(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     if (expr.len < 2) {
-        return EvaluationValue{ .num = 0 };
+        return EvaluationValue{ .nil = {} };
     }
     switch (expr[0]) {
         .expr => |e| {
