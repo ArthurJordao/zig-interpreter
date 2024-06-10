@@ -26,11 +26,13 @@ const Expr = []Val;
 const EvaluationType = enum {
     num,
     runtimeError,
+    nil,
 };
 
 const EvaluationValue = union(EvaluationType) {
     num: i32,
     runtimeError: Error,
+    nil: void,
 };
 
 const Scope = std.StringHashMap(*EvaluationValue);
@@ -200,6 +202,9 @@ fn eval(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocat
                             .num => {
                                 try addToScope(scope, sym, evaluation, allocator);
                             },
+                            .nil => {
+                                try addToScope(scope, sym, evaluation, allocator);
+                            },
                             .runtimeError => {
                                 return EvaluationValue{ .runtimeError = evaluation.runtimeError };
                             },
@@ -243,6 +248,7 @@ fn evalAdd(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
                     .runtimeError => |rError| {
                         return EvaluationValue{ .runtimeError = rError };
                     },
+                    .nil => {},
                 }
             },
             .symbol => |sym| {
@@ -250,6 +256,7 @@ fn evalAdd(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
                     .num => |num| {
                         sum += num;
                     },
+                    .nil => {},
                     .runtimeError => |rError| {
                         return EvaluationValue{ .runtimeError = rError };
                     },
@@ -292,6 +299,9 @@ fn evalLet(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
                     },
                     .runtimeError => {
                         return EvaluationValue{ .runtimeError = evaluation.runtimeError };
+                    },
+                    .nil => {
+                        try addToScope(scope, variableName, evaluation, allocator);
                     },
                 }
             }
