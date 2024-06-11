@@ -44,7 +44,7 @@ const value = mecha.combine(.{
             .base = 10,
         }).map(numToValue),
         symbol,
-        mecha.ref(lispRef).map(exprToValue),
+        mecha.ref(exprParserRef).map(exprToValue),
     }),
     ws,
 });
@@ -107,15 +107,15 @@ const lparens = mecha.combine(.{ mecha.ascii.char('(').discard(), ws });
 
 const rparens = mecha.combine(.{ mecha.ascii.char(')').discard(), ws });
 
-const lisp = mecha.combine(.{
+const exprParser = mecha.combine(.{
     ws,
     lparens,
     value.many(.{ .collect = true }),
     rparens,
 });
 
-fn lispRef() mecha.Parser(Expr) {
-    return lisp;
+fn exprParserRef() mecha.Parser(Expr) {
+    return exprParser;
 }
 
 pub fn main() !void {
@@ -130,7 +130,7 @@ pub fn main() !void {
     defer globalScope.deinit();
     defer freeScope(&globalScope, allocator);
     while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
-        const ast = (try lisp.parse(allocator, line)).value;
+        const ast = (try exprParser.parse(allocator, line)).value;
         defer freeExpr(allocator, ast);
         try writer.print("{any}\n", .{eval(ast, &globalScope, allocator)});
     }
@@ -314,7 +314,7 @@ fn evalLet(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
 
 test "lisp with simple expr" {
     const allocator = std.testing.allocator;
-    const ast = (try lisp.parse(allocator, "(+ 1 2)")).value;
+    const ast = (try exprParser.parse(allocator, "(+ 1 2)")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
     const evaluated = eval(ast, &scope, allocator);
@@ -328,7 +328,7 @@ test "lisp with simple expr" {
 
 test "lisp with recursive expr" {
     const allocator = std.testing.allocator;
-    const ast = (try lisp.parse(allocator, "(+ 1 2 (+ 1 2))")).value;
+    const ast = (try exprParser.parse(allocator, "(+ 1 2 (+ 1 2))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
     const evaluated = eval(ast, &scope, allocator);
@@ -342,7 +342,7 @@ test "lisp with recursive expr" {
 
 test "lisp with some lets" {
     const allocator = std.testing.allocator;
-    const ast = (try lisp.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y))")).value;
+    const ast = (try exprParser.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
     const evaluated = eval(ast, &scope, allocator);
@@ -356,7 +356,7 @@ test "lisp with some lets" {
 
 test "lisp with some lets and undefined variable" {
     const allocator = std.testing.allocator;
-    const ast = (try lisp.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y z))")).value;
+    const ast = (try exprParser.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y z))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
     const evaluated = eval(ast, &scope, allocator);
