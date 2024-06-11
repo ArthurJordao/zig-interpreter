@@ -1,11 +1,5 @@
 const std = @import("std");
-const mecha = @import("mecha");
-
-const ValType = enum {
-    num,
-    expr,
-    symbol,
-};
+const parser = @import("parser.zig");
 
 const Error = enum {
     divisionByZero,
@@ -14,14 +8,6 @@ const Error = enum {
     invalidOperand,
     undefinedVariable,
 };
-
-const Val = union(ValType) {
-    num: i32,
-    expr: Expr,
-    symbol: []u8,
-};
-
-const Expr = []Val;
 
 const EvaluationType = enum {
     num,
@@ -37,87 +23,6 @@ const EvaluationValue = union(EvaluationType) {
 
 const Scope = std.StringHashMap(EvaluationValue);
 
-const value = mecha.combine(.{
-    mecha.oneOf(.{
-        mecha.int(i32, .{
-            .parse_sign = false,
-            .base = 10,
-        }).map(numToValue),
-        symbol,
-        mecha.ref(exprParserRef).map(exprToValue),
-    }),
-    ws,
-});
-
-fn numToValue(num: i32) Val {
-    return Val{ .num = num };
-}
-
-fn exprToValue(expr: Expr) Val {
-    return Val{ .expr = expr };
-}
-
-const ws = mecha.oneOf(.{
-    mecha.utf8.char(0x0020),
-    mecha.utf8.char(0x000A),
-    mecha.utf8.char(0x000D),
-    mecha.utf8.char(0x0009),
-    mecha.utf8.char(','),
-}).many(.{ .collect = false }).discard();
-
-const allowedSymbolSpecialCharacters = mecha.combine(.{
-    mecha.oneOf(.{
-        mecha.ascii.char('+'),
-        mecha.ascii.char('-'),
-        mecha.ascii.char('/'),
-        mecha.ascii.char('*'),
-    }),
-});
-
-const uppercaseCharacter = mecha.ascii.range('A', 'Z');
-const lowercaseCharacter = mecha.ascii.range('a', 'z');
-const numberCharacter = mecha.ascii.range('0', '9');
-
-const symbol = mecha.combine(.{
-    mecha.oneOf(.{
-        uppercaseCharacter,
-        lowercaseCharacter,
-        allowedSymbolSpecialCharacters,
-    }),
-    mecha.oneOf(.{
-        uppercaseCharacter,
-        lowercaseCharacter,
-        allowedSymbolSpecialCharacters,
-        numberCharacter,
-    }).many(.{ .collect = true }),
-    ws,
-}).convert(parseSymbol);
-
-fn parseSymbol(allocator: std.mem.Allocator, parsedValue: std.meta.Tuple(&.{ u8, []u8 })) !Val {
-    const s = try allocator.alloc(u8, parsedValue[1].len + 1);
-    s[0] = parsedValue[0];
-    for (1.., parsedValue[1]) |i, c| {
-        s[i] = c;
-    }
-    allocator.free(parsedValue[1]);
-    return Val{ .symbol = s };
-}
-
-const lparens = mecha.combine(.{ mecha.ascii.char('(').discard(), ws });
-
-const rparens = mecha.combine(.{ mecha.ascii.char(')').discard(), ws });
-
-const exprParser = mecha.combine(.{
-    ws,
-    lparens,
-    value.many(.{ .collect = true }),
-    rparens,
-});
-
-fn exprParserRef() mecha.Parser(Expr) {
-    return exprParser;
-}
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -130,7 +35,7 @@ pub fn main() !void {
     defer globalScope.deinit();
     defer freeScope(&globalScope, allocator);
     while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
-        const ast = (try exprParser.parse(allocator, line)).value;
+        const ast = (try parser.exprParser.parse(allocator, line)).value;
         defer freeExpr(allocator, ast);
         try writer.print("{any}\n", .{eval(ast, &globalScope, allocator)});
     }
@@ -143,7 +48,7 @@ fn freeScope(scope: *Scope, allocator: std.mem.Allocator) void {
     }
 }
 
-fn freeExpr(allocator: std.mem.Allocator, expr: Expr) void {
+fn freeExpr(allocator: std.mem.Allocator, expr: parser.Expr) void {
     for (expr) |arg| {
         switch (arg) {
             .num => {},
@@ -169,7 +74,7 @@ fn newChildScope(scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.
     return newScope;
 }
 
-fn eval(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+fn eval(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     if (expr.len == 0) {
         return EvaluationValue{ .nil = {} };
     }
@@ -228,7 +133,7 @@ fn addToScope(scope: *Scope, key: []u8, evaluation: EvaluationValue, allocator: 
     try scope.put(k, evaluation);
 }
 
-fn evalAdd(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+fn evalAdd(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     var sum: i32 = 0;
     for (expr) |arg| {
         switch (arg) {
@@ -262,7 +167,7 @@ fn evalAdd(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
     return EvaluationValue{ .num = sum };
 }
 
-fn evalLet(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     if (expr.len < 2) {
         return EvaluationValue{ .nil = {} };
     }
@@ -314,7 +219,7 @@ fn evalLet(expr: Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allo
 
 test "lisp with simple expr" {
     const allocator = std.testing.allocator;
-    const ast = (try exprParser.parse(allocator, "(+ 1 2)")).value;
+    const ast = (try parser.exprParser.parse(allocator, "(+ 1 2)")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
     const evaluated = eval(ast, &scope, allocator);
@@ -328,7 +233,7 @@ test "lisp with simple expr" {
 
 test "lisp with recursive expr" {
     const allocator = std.testing.allocator;
-    const ast = (try exprParser.parse(allocator, "(+ 1 2 (+ 1 2))")).value;
+    const ast = (try parser.exprParser.parse(allocator, "(+ 1 2 (+ 1 2))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
     const evaluated = eval(ast, &scope, allocator);
@@ -342,7 +247,7 @@ test "lisp with recursive expr" {
 
 test "lisp with some lets" {
     const allocator = std.testing.allocator;
-    const ast = (try exprParser.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y))")).value;
+    const ast = (try parser.exprParser.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
     const evaluated = eval(ast, &scope, allocator);
@@ -356,7 +261,7 @@ test "lisp with some lets" {
 
 test "lisp with some lets and undefined variable" {
     const allocator = std.testing.allocator;
-    const ast = (try exprParser.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y z))")).value;
+    const ast = (try parser.exprParser.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y z))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
     const evaluated = eval(ast, &scope, allocator);
