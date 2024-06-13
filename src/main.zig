@@ -114,32 +114,7 @@ fn evalExpr(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.
                 return (try evalLet(expr[1..], &letScope, allocator));
             }
             if (std.mem.eql(u8, operator, "def")) {
-                if (expr.len != 3) {
-                    return EvaluationValue{ .runtimeError = Error.arityMismatch };
-                }
-                switch (expr[1]) {
-                    .symbol => |sym| {
-                        const evaluation = try eval(expr[2], scope, allocator);
-                        switch (evaluation) {
-                            .num => {
-                                try addToScope(scope, sym, evaluation, allocator);
-                            },
-                            .nil => {
-                                try addToScope(scope, sym, evaluation, allocator);
-                            },
-                            .runtimeError => {
-                                return EvaluationValue{ .runtimeError = evaluation.runtimeError };
-                            },
-                            .booleanVal => {
-                                try addToScope(scope, sym, evaluation, allocator);
-                            },
-                        }
-                    },
-                    else => {
-                        return EvaluationValue{ .runtimeError = Error.invalidOperand };
-                    },
-                }
-                return EvaluationValue{ .nil = {} };
+                return try evalDef(expr[1..], scope, allocator);
             }
             return EvaluationValue{ .runtimeError = Error.invalidOperator };
         },
@@ -197,6 +172,35 @@ fn evalAdd(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
         }
     }
     return EvaluationValue{ .num = sum };
+}
+
+fn evalDef(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+    if (expr.len != 2) {
+        return EvaluationValue{ .runtimeError = Error.arityMismatch };
+    }
+    switch (expr[0]) {
+        .symbol => |sym| {
+            const evaluation = try eval(expr[1], scope, allocator);
+            switch (evaluation) {
+                .num => {
+                    try addToScope(scope, sym, evaluation, allocator);
+                },
+                .nil => {
+                    try addToScope(scope, sym, evaluation, allocator);
+                },
+                .runtimeError => {
+                    return EvaluationValue{ .runtimeError = evaluation.runtimeError };
+                },
+                .booleanVal => {
+                    try addToScope(scope, sym, evaluation, allocator);
+                },
+            }
+        },
+        else => {
+            return EvaluationValue{ .runtimeError = Error.invalidOperand };
+        },
+    }
+    return EvaluationValue{ .nil = {} };
 }
 
 fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
