@@ -13,12 +13,14 @@ const EvaluationType = enum {
     num,
     runtimeError,
     nil,
+    booleanVal,
 };
 
 const EvaluationValue = union(EvaluationType) {
     num: i32,
     runtimeError: Error,
     nil: void,
+    booleanVal: bool,
 };
 
 const Scope = std.StringHashMap(EvaluationValue);
@@ -57,6 +59,7 @@ fn freeValue(allocator: std.mem.Allocator, value: parser.Val) void {
             allocator.free(sym);
         },
         .num => {},
+        .booleanVal => {},
     }
 }
 
@@ -88,6 +91,9 @@ fn eval(value: parser.Val, scope: *Scope, allocator: std.mem.Allocator) std.mem.
         },
         .symbol => |sym| {
             return (scope.get(sym)) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable };
+        },
+        .booleanVal => |b| {
+            return EvaluationValue{ .booleanVal = b };
         },
     }
 }
@@ -123,6 +129,9 @@ fn evalExpr(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.
                             },
                             .runtimeError => {
                                 return EvaluationValue{ .runtimeError = evaluation.runtimeError };
+                            },
+                            .booleanVal => {
+                                try addToScope(scope, sym, evaluation, allocator);
                             },
                         }
                     },
@@ -163,6 +172,9 @@ fn evalAdd(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
                         return EvaluationValue{ .runtimeError = rError };
                     },
                     .nil => {},
+                    .booleanVal => {
+                        return EvaluationValue{ .runtimeError = Error.invalidOperand };
+                    },
                 }
             },
             .symbol => |sym| {
@@ -174,7 +186,13 @@ fn evalAdd(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
                     .runtimeError => |rError| {
                         return EvaluationValue{ .runtimeError = rError };
                     },
+                    .booleanVal => {
+                        return EvaluationValue{ .runtimeError = Error.invalidOperand };
+                    },
                 }
+            },
+            .booleanVal => {
+                return EvaluationValue{ .runtimeError = Error.invalidOperand };
             },
         }
     }
@@ -201,6 +219,9 @@ fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
                     .expr => {
                         return EvaluationValue{ .runtimeError = Error.invalidOperand };
                     },
+                    .booleanVal => {
+                        return EvaluationValue{ .runtimeError = Error.invalidOperand };
+                    },
                 };
                 const evaluation = try eval(val, scope, allocator);
                 switch (evaluation) {
@@ -211,6 +232,9 @@ fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
                         return EvaluationValue{ .runtimeError = evaluation.runtimeError };
                     },
                     .nil => {
+                        try addToScope(scope, variableName, evaluation, allocator);
+                    },
+                    .booleanVal => {
                         try addToScope(scope, variableName, evaluation, allocator);
                     },
                 }

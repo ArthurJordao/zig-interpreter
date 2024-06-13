@@ -7,12 +7,14 @@ pub const Val = union(ValType) {
     num: i32,
     expr: Expr,
     symbol: []u8,
+    booleanVal: bool,
 };
 
 const ValType = enum {
     num,
     expr,
     symbol,
+    booleanVal,
 };
 
 pub const value = mecha.combine(.{
@@ -21,6 +23,7 @@ pub const value = mecha.combine(.{
             .parse_sign = false,
             .base = 10,
         }).map(numToValue),
+        booleanVal,
         symbol,
         mecha.ref(exprParserRef).map(exprToValue),
     }),
@@ -70,6 +73,11 @@ const symbol = mecha.combine(.{
     }).many(.{ .collect = true }),
     ws,
 }).convert(parseSymbol);
+
+const booleanVal = mecha.oneOf(.{
+    mecha.string("true").mapConst(Val{ .booleanVal = true }),
+    mecha.string("false").mapConst(Val{ .booleanVal = false }),
+});
 
 fn parseSymbol(allocator: std.mem.Allocator, parsedValue: std.meta.Tuple(&.{ u8, []u8 })) !Val {
     const s = try allocator.alloc(u8, parsedValue[1].len + 1);
