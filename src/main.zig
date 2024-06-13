@@ -37,7 +37,7 @@ pub fn main() !void {
     while (try reader.readUntilDelimiterOrEof(input, '\n')) |line| {
         const ast = (try parser.value.parse(allocator, line)).value;
         defer freeValue(allocator, ast);
-        try writer.print("{any}\n", .{evalValue(ast, &globalScope, allocator)});
+        try writer.print("{any}\n", .{eval(ast, &globalScope, allocator)});
     }
 }
 
@@ -78,7 +78,7 @@ fn newChildScope(scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.
     return newScope;
 }
 
-fn evalValue(value: parser.Val, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+fn eval(value: parser.Val, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
     switch (value) {
         .expr => |expr| {
             return evalExpr(expr, scope, allocator);
@@ -113,11 +113,7 @@ fn evalExpr(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.
                 }
                 switch (expr[1]) {
                     .symbol => |sym| {
-                        const evaluation = switch (expr[2]) {
-                            .expr => |ex| try evalExpr(ex, scope, allocator),
-                            .num => |num| EvaluationValue{ .num = num },
-                            .symbol => |s| scope.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
-                        };
+                        const evaluation = try eval(expr[2], scope, allocator);
                         switch (evaluation) {
                             .num => {
                                 try addToScope(scope, sym, evaluation, allocator);
@@ -206,11 +202,7 @@ fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
                         return EvaluationValue{ .runtimeError = Error.invalidOperand };
                     },
                 };
-                const evaluation = switch (val) {
-                    .expr => |ex| try evalExpr(ex, scope, allocator),
-                    .num => |num| EvaluationValue{ .num = num },
-                    .symbol => |s| scope.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
-                };
+                const evaluation = try eval(val, scope, allocator);
                 switch (evaluation) {
                     .num => {
                         try addToScope(scope, variableName, evaluation, allocator);
@@ -223,11 +215,7 @@ fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
                     },
                 }
             }
-            return switch (expr[1]) {
-                .expr => |ex| evalExpr(ex, scope, allocator),
-                .num => |num| EvaluationValue{ .num = num },
-                .symbol => |s| scope.get(s) orelse EvaluationValue{ .runtimeError = Error.undefinedVariable },
-            };
+            return try eval(expr[1], scope, allocator);
         },
         else => {
             return EvaluationValue{ .runtimeError = Error.invalidOperand };
@@ -237,11 +225,11 @@ fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
 
 test "lisp with simple expr" {
     const allocator = std.testing.allocator;
-    const ast = (try parser.exprParser.parse(allocator, "(+ 1 2)")).value;
+    const ast = (try parser.value.parse(allocator, "(+ 1 2)")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
-    const evaluated = evalExpr(ast, &scope, allocator);
-    defer freeExpr(std.testing.allocator, ast);
+    const evaluated = try eval(ast, &scope, allocator);
+    defer freeValue(std.testing.allocator, ast);
 
     try std.testing.expectEqualDeep(
         EvaluationValue{ .num = 3 },
@@ -251,11 +239,11 @@ test "lisp with simple expr" {
 
 test "lisp with recursive expr" {
     const allocator = std.testing.allocator;
-    const ast = (try parser.exprParser.parse(allocator, "(+ 1 2 (+ 1 2))")).value;
+    const ast = (try parser.value.parse(allocator, "(+ 1 2 (+ 1 2))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
-    const evaluated = evalExpr(ast, &scope, allocator);
-    defer freeExpr(std.testing.allocator, ast);
+    const evaluated = try eval(ast, &scope, allocator);
+    defer freeValue(std.testing.allocator, ast);
 
     try std.testing.expectEqualDeep(
         EvaluationValue{ .num = 6 },
@@ -265,11 +253,11 @@ test "lisp with recursive expr" {
 
 test "lisp with some lets" {
     const allocator = std.testing.allocator;
-    const ast = (try parser.exprParser.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y))")).value;
+    const ast = (try parser.value.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
-    const evaluated = evalExpr(ast, &scope, allocator);
-    defer freeExpr(std.testing.allocator, ast);
+    const evaluated = try eval(ast, &scope, allocator);
+    defer freeValue(std.testing.allocator, ast);
 
     try std.testing.expectEqualDeep(
         EvaluationValue{ .num = 8 },
@@ -279,11 +267,11 @@ test "lisp with some lets" {
 
 test "lisp with some lets and undefined variable" {
     const allocator = std.testing.allocator;
-    const ast = (try parser.exprParser.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y z))")).value;
+    const ast = (try parser.value.parse(allocator, "(let (x 1 y (let (z 3) (+ z 4))) (+ x y z))")).value;
     var scope = Scope.init(allocator);
     defer scope.deinit();
-    const evaluated = evalExpr(ast, &scope, allocator);
-    defer freeExpr(std.testing.allocator, ast);
+    const evaluated = try eval(ast, &scope, allocator);
+    defer freeValue(std.testing.allocator, ast);
     try std.testing.expectEqualDeep(
         EvaluationValue{ .runtimeError = Error.undefinedVariable },
         evaluated,
