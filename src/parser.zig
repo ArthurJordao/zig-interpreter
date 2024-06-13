@@ -15,7 +15,7 @@ const ValType = enum {
     symbol,
 };
 
-const value = mecha.combine(.{
+pub const value = mecha.combine(.{
     mecha.oneOf(.{
         mecha.int(i32, .{
             .parse_sign = false,
@@ -85,7 +85,7 @@ const lparens = mecha.combine(.{ mecha.ascii.char('(').discard(), ws });
 
 const rparens = mecha.combine(.{ mecha.ascii.char(')').discard(), ws });
 
-pub const exprParser = mecha.combine(.{
+const exprParser = mecha.combine(.{
     ws,
     lparens,
     value.many(.{ .collect = true }),
