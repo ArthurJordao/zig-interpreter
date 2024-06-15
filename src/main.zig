@@ -30,6 +30,10 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     const reader = std.io.getStdIn().reader();
     const writer = std.io.getStdOut().writer();
+    try app(allocator, reader, writer);
+}
+
+fn app(allocator: std.mem.Allocator, reader: std.fs.File.Reader, writer: std.fs.File.Writer) !void {
     const input = try allocator.alloc(u8, 1024);
     defer allocator.free(input);
 
