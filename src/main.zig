@@ -33,7 +33,7 @@ pub fn main() !void {
     try app(allocator, &reader, &writer);
 }
 
-fn app(allocator: std.mem.Allocator, reader: *std.fs.File.Reader, writer: *std.fs.File.Writer) !void {
+fn app(allocator: std.mem.Allocator, reader: anytype, writer: anytype) !void {
     const input = try allocator.alloc(u8, 1024);
     defer allocator.free(input);
 
@@ -309,4 +309,52 @@ test "lisp with some lets and undefined variable" {
         EvaluationValue{ .runtimeError = Error.undefinedVariable },
         evaluated,
     );
+}
+
+fn MockReader() type {
+    return struct {
+        const Self = @This();
+        i: usize,
+        arr: [][]u8,
+        allocator: std.mem.Allocator,
+        fn readUntilDelimiterOrEof(self: *Self, _: anytype, _: anytype) std.mem.Allocator.Error!?[]u8 {
+            if (self.i == 5) {
+                return null;
+            }
+            if (self.i == 6) {
+                return error.OutOfMemory;
+            }
+            const current = self.arr[self.i];
+            self.i += 1;
+            return current;
+        }
+        fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Self {
+            const values = try allocator.alloc([]u8, 5);
+            for (0..5) |i| {
+                values[i] = try allocator.alloc(u8, 3);
+                std.mem.copyForwards(u8, values[i], "hey");
+            }
+
+            return Self{ .i = 0, .arr = values, .allocator = allocator };
+        }
+
+        fn deinit(self: *Self) void {
+            for (self.arr) |v| {
+                self.allocator.free(v);
+            }
+            self.allocator.free(self.arr);
+        }
+    };
+}
+
+test "run app test" {
+    const allocator = std.testing.allocator;
+    var writerArray = std.ArrayList(u8).init(allocator);
+    defer writerArray.deinit();
+    const writer = writerArray.writer();
+
+    var reader = try MockReader().init(allocator);
+    defer reader.deinit();
+    try app(allocator, &reader, &writer);
+    try std.testing.expectEqualStrings("", writerArray.items);
 }
