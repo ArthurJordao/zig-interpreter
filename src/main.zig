@@ -112,10 +112,7 @@ fn evalExpr(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.
                 return (try evalAdd(expr[1..], scope, allocator));
             }
             if (std.mem.eql(u8, operator, "let")) {
-                var letScope = try newChildScope(scope, allocator);
-                defer letScope.deinit();
-                defer freeScope(&letScope, allocator);
-                return (try evalLet(expr[1..], &letScope, allocator));
+                return (try evalLet(expr[1..], scope, allocator));
             }
             if (std.mem.eql(u8, operator, "def")) {
                 return try evalDef(expr[1..], scope, allocator);
@@ -207,7 +204,11 @@ fn evalDef(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
     return EvaluationValue{ .nil = {} };
 }
 
-fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+fn evalLet(expr: parser.Expr, parentScope: *Scope, allocator: std.mem.Allocator) std.mem.Allocator.Error!EvaluationValue {
+    var scope = try newChildScope(parentScope, allocator);
+    defer scope.deinit();
+    defer freeScope(&scope, allocator);
+
     if (expr.len < 2) {
         return EvaluationValue{ .nil = {} };
     }
@@ -231,23 +232,23 @@ fn evalLet(expr: parser.Expr, scope: *Scope, allocator: std.mem.Allocator) std.m
                         return EvaluationValue{ .runtimeError = Error.invalidOperand };
                     },
                 };
-                const evaluation = try eval(val, scope, allocator);
+                const evaluation = try eval(val, &scope, allocator);
                 switch (evaluation) {
                     .num => {
-                        try addToScope(scope, variableName, evaluation, allocator);
+                        try addToScope(&scope, variableName, evaluation, allocator);
                     },
                     .runtimeError => {
                         return EvaluationValue{ .runtimeError = evaluation.runtimeError };
                     },
                     .nil => {
-                        try addToScope(scope, variableName, evaluation, allocator);
+                        try addToScope(&scope, variableName, evaluation, allocator);
                     },
                     .booleanVal => {
-                        try addToScope(scope, variableName, evaluation, allocator);
+                        try addToScope(&scope, variableName, evaluation, allocator);
                     },
                 }
             }
-            return try eval(expr[1], scope, allocator);
+            return try eval(expr[1], &scope, allocator);
         },
         else => {
             return EvaluationValue{ .runtimeError = Error.invalidOperand };
