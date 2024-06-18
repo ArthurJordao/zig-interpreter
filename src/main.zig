@@ -311,45 +311,43 @@ test "lisp with some lets and undefined variable" {
     );
 }
 
-fn MockReader() type {
-    return struct {
-        const Self = @This();
-        current: usize,
-        arr: [][]u8,
-        allocator: std.mem.Allocator,
-        fn readUntilDelimiterOrEof(self: *Self, _: anytype, _: anytype) std.mem.Allocator.Error!?[]u8 {
-            if (self.current == self.arr.len) {
-                return null;
-            }
-            if (self.current > self.arr.len) {
-                return error.OutOfMemory;
-            }
-            const current = self.arr[self.current];
-            self.current += 1;
-            return current;
+const MockReader = struct {
+    const Self = @This();
+    current: usize,
+    arr: [][]u8,
+    allocator: std.mem.Allocator,
+    fn readUntilDelimiterOrEof(self: *Self, _: anytype, _: anytype) std.mem.Allocator.Error!?[]u8 {
+        if (self.current == self.arr.len) {
+            return null;
         }
-        fn init(allocator: std.mem.Allocator, vals: [3][]const u8) std.mem.Allocator.Error!Self {
-            const values = try allocator.alloc([]u8, vals.len);
-            for (vals, 0..) |val, i| {
-                values[i] = try allocator.alloc(u8, val.len);
-                std.mem.copyForwards(u8, values[i], val);
-            }
-
-            return Self{
-                .current = 0,
-                .arr = values,
-                .allocator = allocator,
-            };
+        if (self.current > self.arr.len) {
+            return error.OutOfMemory;
+        }
+        const current = self.arr[self.current];
+        self.current += 1;
+        return current;
+    }
+    fn init(allocator: std.mem.Allocator, vals: [3][]const u8) std.mem.Allocator.Error!Self {
+        const values = try allocator.alloc([]u8, vals.len);
+        for (vals, 0..) |val, i| {
+            values[i] = try allocator.alloc(u8, val.len);
+            std.mem.copyForwards(u8, values[i], val);
         }
 
-        fn deinit(self: *Self) void {
-            for (self.arr) |v| {
-                self.allocator.free(v);
-            }
-            self.allocator.free(self.arr);
+        return Self{
+            .current = 0,
+            .arr = values,
+            .allocator = allocator,
+        };
+    }
+
+    fn deinit(self: *Self) void {
+        for (self.arr) |v| {
+            self.allocator.free(v);
         }
-    };
-}
+        self.allocator.free(self.arr);
+    }
+};
 
 test "run app test" {
     const allocator = std.testing.allocator;
@@ -358,7 +356,7 @@ test "run app test" {
     const writer = writerArray.writer();
     const input: [3][]const u8 = .{ "(def three (+ 1 2))", "(+ (let (x 1 y 2) (+ x y 6)) 5)", "three" };
 
-    var reader = try MockReader().init(allocator, input);
+    var reader = try MockReader.init(allocator, input);
     defer reader.deinit();
     try app(allocator, &reader, &writer);
     const expected =
