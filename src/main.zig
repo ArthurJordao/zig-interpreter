@@ -314,28 +314,32 @@ test "lisp with some lets and undefined variable" {
 fn MockReader() type {
     return struct {
         const Self = @This();
-        i: usize,
+        current: usize,
         arr: [][]u8,
         allocator: std.mem.Allocator,
         fn readUntilDelimiterOrEof(self: *Self, _: anytype, _: anytype) std.mem.Allocator.Error!?[]u8 {
-            if (self.i == 5) {
+            if (self.current == self.arr.len) {
                 return null;
             }
-            if (self.i == 6) {
+            if (self.current > self.arr.len) {
                 return error.OutOfMemory;
             }
-            const current = self.arr[self.i];
-            self.i += 1;
+            const current = self.arr[self.current];
+            self.current += 1;
             return current;
         }
-        fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Self {
-            const values = try allocator.alloc([]u8, 5);
-            for (0..5) |i| {
-                values[i] = try allocator.alloc(u8, 3);
-                std.mem.copyForwards(u8, values[i], "hey");
+        fn init(allocator: std.mem.Allocator, vals: [3][]const u8) std.mem.Allocator.Error!Self {
+            const values = try allocator.alloc([]u8, vals.len);
+            for (vals, 0..) |val, i| {
+                values[i] = try allocator.alloc(u8, val.len);
+                std.mem.copyForwards(u8, values[i], val);
             }
 
-            return Self{ .i = 0, .arr = values, .allocator = allocator };
+            return Self{
+                .current = 0,
+                .arr = values,
+                .allocator = allocator,
+            };
         }
 
         fn deinit(self: *Self) void {
@@ -352,9 +356,16 @@ test "run app test" {
     var writerArray = std.ArrayList(u8).init(allocator);
     defer writerArray.deinit();
     const writer = writerArray.writer();
+    const input: [3][]const u8 = .{ "(def three (+ 1 2))", "(+ (let (x 1 y 2) (+ x y 6)) 5)", "three" };
 
-    var reader = try MockReader().init(allocator);
+    var reader = try MockReader().init(allocator, input);
     defer reader.deinit();
     try app(allocator, &reader, &writer);
-    try std.testing.expectEqualStrings("", writerArray.items);
+    const expected =
+        \\main.EvaluationValue{ .nil = void }
+        \\main.EvaluationValue{ .num = 14 }
+        \\main.EvaluationValue{ .num = 3 }
+        \\
+    ;
+    try std.testing.expectEqualStrings(expected, writerArray.items);
 }
